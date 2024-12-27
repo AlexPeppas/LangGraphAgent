@@ -15,8 +15,8 @@ from agentTools import BasicToolNode
 
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables.config import RunnableConfig
-    
-#from promptBuilder import PromptBuilder
+from langchain_core.runnables import chain    
+from promptBuilder import PromptBuilder
 
 envUtils.init_env()
 
