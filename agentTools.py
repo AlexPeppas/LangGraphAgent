@@ -4,7 +4,16 @@ import json
 class BasicToolNode:
 
     def __init__(self, tools: list) -> None:
-        self.tools_by_name = {tool.name : tool for tool in tools }
+        self.tools_by_name = {}
+        for tool in tools:
+            if hasattr(tool, "name"):
+                key = tool.name
+            elif hasattr(tool, "__name__"):
+                key = tool.__name__
+            else:
+                raise AttributeError(f"Tool {tool} must have either 'name' or '__name__' attribute.")
+            
+            self.tools_by_name[key] = tool
 
     def __call__(self, inputs: dict):
         if messages := inputs.get("messages", []):
