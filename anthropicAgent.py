@@ -88,11 +88,10 @@ def stream_graph_updates(user_input: str, config: RunnableConfig):
         for value in event.values():
             print("Assistant:", value["messages"][-1].content) #.pretty_print()
 
+threadId = input("ThreadId: ")
+config = {"configurable" : {"thread_id": f"{threadId}"}}
 while True:
     try:
-        threadId = input("ThreadId: ")
-        config = {"configurable" : {"thread_id": f"{threadId}"}}
-
         user_input = input("User: ")
         if user_input.lower() in ["quit", "exit", "q"]:
             print("Goodbye!")
