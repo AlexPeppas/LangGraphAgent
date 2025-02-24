@@ -33,8 +33,8 @@ class State(TypedDict):
     # in the annotation defines how this state key should be updated
     # (in this case, it appends messages to the list, rather than overwriting them)
     messages: Annotated[list, add_messages]
-    ask_human: bool
-    approved: bool
+    last_tool_name : str
+    traces_count : int
 
 def is_critical_tool(ai_message: object) -> bool:
     for tool_call in ai_message.tool_calls:
@@ -64,9 +64,15 @@ graph_builder = StateGraph(State)
 # generally require the ID of the corresponding tool call. We can use
 # LangChain's InjectedToolCallId to signal that this argument should not
 # be revealed to the model in the tool's schema.
-def human_assistance_tool(is_approved: bool, tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
+def human_assistance_tool(tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
     """Request assistance from human."""
     # If the information is correct, update the state as-is.
+    
+    is_approved = False
+    user_input = input("Do you approve the above request?")
+    if user_input.lower() in ["yes", "y", "approve", "approved"]:
+        is_approved = True
+
     if is_approved:
         response = "User approved the request."
     else:
@@ -74,8 +80,7 @@ def human_assistance_tool(is_approved: bool, tool_call_id: Annotated[str, Inject
      # Otherwise, receive information from the human reviewer.
     
     state_update = {
-        "approved": is_approved,
-        "messages": [ToolMessage(response, tool_call_id=tool_call_id)],
+        "messages": [ToolMessage(response, tool_call_id=tool_call_id)]
     }
     # We return a Command object in the tool to update our state.
     return Command(update=state_update)
@@ -124,43 +129,47 @@ graph_builder.add_edge("critical_tools", "llm")
 graph_builder.add_edge("tools", "llm")
 graph_builder.add_edge(START, "llm")
 
-
 memory = MemorySaver()
 
 graph = graph_builder.compile(checkpointer=memory, interrupt_before= ["critical_tools"])
 
-try:
-    display(Image(graph.get_graph().draw_png()))
-except Exception:
-    pass
+# Works only in Jupyter
+# try:
+#     graph_png = graph.get_graph().draw_png()
+#     display(Image(data = graph_png))
+# except:
+#     pass
 
 def stream_graph_updates(user_input: str, config: RunnableConfig):
-    for event in graph.stream({"messages": [("user", user_input)]}, config, stream_mode= "values"):
-        for value in event.values():
-            if isinstance(value, dict) and "messages" in value:
-                # Access the content safely
-                last_message = value["messages"][-1]
-                if hasattr(last_message, "content"):
-                    "Assistant:", last_message.pretty_print()
+    events = graph.stream({"messages": [("user", user_input)]}, config, stream_mode= "values")
+    for event in events:
+        if "messages" in event:
+            last_message = event["messages"][-1]
+            if isinstance(last_message, ToolMessage):
+                
+                # this block does not work well
+                loaded_state = graph.get_state(config)[0]
+                if "traces_count" in loaded_state:
+                    trace_count = loaded_state["traces_count"]+1
                 else:
-                    print("Assistant: Message has no content.")
-            #else:
-                # Log unexpected structures for debugging
-                #print(f"Unexpected value structure: {value}")
-    
+                    trace_count = 1
+                # end of faulty block
+                
+                graph.update_state(config, {"last_tool_name": last_message.name, "traces_count": trace_count})
+            event["messages"][-1].pretty_print()
+
+    # HITL, stream with None for continuation of the interrupted Node. The Critical tools node is responsible to send Command.
     state = graph.get_state(config)
     if ('critical_tools' in state.next):
         # continue execution, it has been interrupted for HITL
-        human_response = input("Do you approve the following request? ")
-        if (human_response):
-            for event in graph.stream(None, config, stream_mode= "values"):
-                print (event)
-        else:
-            print("Rejected")
+        events = graph.stream(None, config, stream_mode= "values")
+        for event in events:
+            if "messages" in event:
+                event["messages"][-1].pretty_print()
 
 threadId = input("ThreadId: ")
 while True:
-    #try:
+    try:
         config = {"configurable" : {"thread_id": f"{threadId}"}}
 
         user_input = input("User: ")
@@ -177,6 +186,6 @@ while True:
             continue
 
         stream_graph_updates(user_input, config)
-    # except Exception as ex:
-    #     print(f"Caught an exception: {ex}")
-    #     raise
+    except Exception as ex:
+        print(f"Caught an exception: {ex}")
+        raise
