@@ -71,8 +71,10 @@ graph_builder.add_conditional_edges(
 graph_builder.add_edge("tools", "llm")
 graph_builder.add_edge(START, "llm")
 
-# not needed, the conditional edge tools-> llm is responsible to end that
-#graph_builder.add_edge("llm", END)
+# The conditional edge originating from `llm` decides whether to route to
+# the `tools` node or to `END`, so an explicit `llm` -> `END` edge is
+# unnecessary.
+# graph_builder.add_edge("llm", END)
 
 memory = MemorySaver()
 
